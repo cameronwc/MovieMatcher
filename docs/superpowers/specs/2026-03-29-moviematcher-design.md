@@ -110,7 +110,7 @@ Unique constraint on `(room_id, member_id, media_id)` — one swipe per member p
 | `POST` | `/api/rooms/:code/swipe` | Record swipe (body: `{ mediaId, direction }`) — returns match if one occurred |
 | `GET` | `/api/rooms/:code/matches` | Get matched to-watch list |
 | `PATCH` | `/api/rooms/:code/matches/:id` | Mark as watched |
-| `POST` | `/api/media/sync` | Trigger Plex library re-fetch for a room |
+| `POST` | `/api/rooms/:code/sync` | Trigger Plex library re-fetch for this room |
 
 ### WebSocket Events (Socket.IO)
 
