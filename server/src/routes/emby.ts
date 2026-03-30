@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import {
-  validateEmbyConnection,
-  fetchEmbyUsers,
+  validateEmbyServer,
+  authenticateEmbyUser,
   saveEmbyConfig,
   getEmbyConfig,
 } from '../services/embyAuth.js';
@@ -24,8 +24,8 @@ router.get('/status', (_req: Request, res: Response) => {
   }
 });
 
-// POST /api/emby/connect — connect to an Emby server with API key
-router.post('/connect', async (req: Request, res: Response) => {
+// POST /api/emby/login — authenticate with local Emby username/password
+router.post('/login', async (req: Request, res: Response) => {
   try {
     // Block if any media server is already configured
     const existing = getMediaServerConfig();
@@ -36,93 +36,39 @@ router.post('/connect', async (req: Request, res: Response) => {
       return;
     }
 
-    const { serverUrl, apiKey } = req.body as { serverUrl?: string; apiKey?: string };
-
-    if (!serverUrl || !apiKey) {
-      res.status(400).json({ error: 'serverUrl and apiKey are required' });
-      return;
-    }
-
-    // Validate connection
-    const { serverName } = await validateEmbyConnection(serverUrl, apiKey);
-
-    // Fetch users
-    const users = await fetchEmbyUsers(serverUrl, apiKey);
-
-    if (users.length === 0) {
-      res.status(400).json({ error: 'No users found on this Emby server' });
-      return;
-    }
-
-    // Auto-select if single user, otherwise return list
-    if (users.length === 1) {
-      saveEmbyConfig({
-        auth_token: apiKey,
-        server_name: serverName,
-        server_url: serverUrl.replace(/\/+$/, ''),
-        user_id: users[0].id,
-      });
-
-      res.json({
-        connected: true,
-        serverName,
-        serverUrl: serverUrl.replace(/\/+$/, ''),
-      });
-      return;
-    }
-
-    // Multiple users — return list for selection
-    res.json({
-      connected: false,
-      serverName,
-      users: users.map((u) => ({ id: u.id, name: u.name, isAdmin: u.isAdmin })),
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to connect to Emby';
-    res.status(500).json({ error: message });
-  }
-});
-
-// POST /api/emby/select-user — select an Emby user when multiple are available
-router.post('/select-user', async (req: Request, res: Response) => {
-  try {
-    // Block if already configured
-    const existing = getMediaServerConfig();
-    if (existing) {
-      res.status(403).json({
-        error: 'A media server is already configured. Use admin panel to disconnect first.',
-      });
-      return;
-    }
-
-    const { serverUrl, apiKey, userId } = req.body as {
+    const { serverUrl, username, password } = req.body as {
       serverUrl?: string;
-      apiKey?: string;
-      userId?: string;
+      username?: string;
+      password?: string;
     };
 
-    if (!serverUrl || !apiKey || !userId) {
-      res.status(400).json({ error: 'serverUrl, apiKey, and userId are required' });
+    if (!serverUrl || !username) {
+      res.status(400).json({ error: 'serverUrl and username are required' });
       return;
     }
 
-    // Re-validate connection
-    const { serverName } = await validateEmbyConnection(serverUrl, apiKey);
+    // Authenticate the local user
+    const result = await authenticateEmbyUser(
+      serverUrl,
+      username,
+      password || ''
+    );
 
     saveEmbyConfig({
-      auth_token: apiKey,
-      server_name: serverName,
+      auth_token: result.accessToken,
+      server_name: result.serverName,
       server_url: serverUrl.replace(/\/+$/, ''),
-      user_id: userId,
+      user_id: result.userId,
     });
 
     res.json({
       connected: true,
-      serverName,
+      serverName: result.serverName,
       serverUrl: serverUrl.replace(/\/+$/, ''),
+      userName: result.userName,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to select user';
+    const message = err instanceof Error ? err.message : 'Failed to connect to Emby';
     res.status(500).json({ error: message });
   }
 });

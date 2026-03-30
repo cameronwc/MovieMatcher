@@ -7,10 +7,8 @@ import {
   createPlexPin,
   getPlexAuthUrl,
   checkPlexPin,
-  connectEmby,
-  selectEmbyUser,
+  embyLogin,
   type MediaServerStatus,
-  type EmbyConnectResult,
 } from '../api';
 
 export default function Landing() {
@@ -29,12 +27,10 @@ export default function Landing() {
   // Emby auth state
   const [showEmbyForm, setShowEmbyForm] = useState(false);
   const [embyUrl, setEmbyUrl] = useState('');
-  const [embyApiKey, setEmbyApiKey] = useState('');
+  const [embyUsername, setEmbyUsername] = useState('');
+  const [embyPassword, setEmbyPassword] = useState('');
   const [embyError, setEmbyError] = useState('');
   const [connectingEmby, setConnectingEmby] = useState(false);
-  const [embyUsers, setEmbyUsers] = useState<EmbyConnectResult['users']>(undefined);
-  const [pendingEmbyUrl, setPendingEmbyUrl] = useState('');
-  const [pendingEmbyKey, setPendingEmbyKey] = useState('');
 
   // Room state
   const [createNickname, setCreateNickname] = useState('');
@@ -127,14 +123,14 @@ export default function Landing() {
     }
   }
 
-  async function handleEmbyConnect(e: FormEvent) {
+  async function handleEmbyLogin(e: FormEvent) {
     e.preventDefault();
-    if (!embyUrl.trim() || !embyApiKey.trim()) return;
+    if (!embyUrl.trim() || !embyUsername.trim()) return;
 
     setEmbyError('');
     setConnectingEmby(true);
     try {
-      const result = await connectEmby(embyUrl.trim(), embyApiKey.trim());
+      const result = await embyLogin(embyUrl.trim(), embyUsername.trim(), embyPassword);
 
       if (result.connected) {
         setServerStatus({
@@ -144,36 +140,9 @@ export default function Landing() {
           serverUrl: result.serverUrl,
         });
         setShowEmbyForm(false);
-      } else if (result.users && result.users.length > 0) {
-        // Multiple users — show selection
-        setEmbyUsers(result.users);
-        setPendingEmbyUrl(embyUrl.trim());
-        setPendingEmbyKey(embyApiKey.trim());
       }
     } catch (err) {
       setEmbyError(err instanceof Error ? err.message : 'Failed to connect to Emby');
-    } finally {
-      setConnectingEmby(false);
-    }
-  }
-
-  async function handleEmbyUserSelect(userId: string) {
-    setEmbyError('');
-    setConnectingEmby(true);
-    try {
-      const result = await selectEmbyUser(pendingEmbyUrl, pendingEmbyKey, userId);
-      if (result.connected) {
-        setServerStatus({
-          configured: true,
-          serverType: 'emby',
-          serverName: result.serverName,
-          serverUrl: result.serverUrl,
-        });
-        setShowEmbyForm(false);
-        setEmbyUsers(undefined);
-      }
-    } catch (err) {
-      setEmbyError(err instanceof Error ? err.message : 'Failed to select user');
     } finally {
       setConnectingEmby(false);
     }
@@ -237,7 +206,7 @@ export default function Landing() {
               Connect your Plex or Emby server to access your media library.
             </p>
 
-            {!showEmbyForm && !embyUsers && (
+            {!showEmbyForm && (
               <>
                 {plexError && <div className="landing-error">{plexError}</div>}
                 <button
@@ -259,16 +228,16 @@ export default function Landing() {
                 </div>
                 <button
                   className="btn btn-full"
-                  style={{ background: 'var(--color-emby, #52b54b)', color: '#fff' }}
+                  style={{ background: 'var(--color-emby)', color: '#fff' }}
                   onClick={() => setShowEmbyForm(true)}
                 >
-                  Connect Emby Server
+                  Sign in with Emby
                 </button>
               </>
             )}
 
-            {showEmbyForm && !embyUsers && (
-              <form onSubmit={handleEmbyConnect}>
+            {showEmbyForm && (
+              <form onSubmit={handleEmbyLogin}>
                 {embyError && <div className="landing-error">{embyError}</div>}
                 <div className="input-group">
                   <label className="input-label" htmlFor="emby-url">Emby Server URL</label>
@@ -284,27 +253,37 @@ export default function Landing() {
                   />
                 </div>
                 <div className="input-group">
-                  <label className="input-label" htmlFor="emby-key">API Key</label>
+                  <label className="input-label" htmlFor="emby-username">Username</label>
                   <input
-                    id="emby-key"
+                    id="emby-username"
                     className="input"
                     type="text"
-                    placeholder="Your Emby API key"
-                    value={embyApiKey}
-                    onChange={(e) => setEmbyApiKey(e.target.value)}
+                    placeholder="Your Emby username"
+                    value={embyUsername}
+                    onChange={(e) => setEmbyUsername(e.target.value)}
                     required
                     autoComplete="off"
                   />
-                  <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 4 }}>
-                    Find this in Emby Dashboard &gt; Advanced &gt; API Keys
-                  </p>
+                </div>
+                <div className="input-group">
+                  <label className="input-label" htmlFor="emby-password">Password</label>
+                  <input
+                    id="emby-password"
+                    className="input"
+                    type="password"
+                    placeholder="Your Emby password"
+                    value={embyPassword}
+                    onChange={(e) => setEmbyPassword(e.target.value)}
+                    autoComplete="off"
+                  />
                 </div>
                 <button
                   className="btn btn-primary btn-full"
                   type="submit"
-                  disabled={connectingEmby || !embyUrl.trim() || !embyApiKey.trim()}
+                  disabled={connectingEmby || !embyUrl.trim() || !embyUsername.trim()}
+                  style={{ background: 'var(--color-emby)' }}
                 >
-                  {connectingEmby ? 'Connecting...' : 'Connect'}
+                  {connectingEmby ? 'Signing in...' : 'Sign in'}
                 </button>
                 <button
                   className="btn btn-ghost btn-full"
@@ -315,34 +294,6 @@ export default function Landing() {
                   Back
                 </button>
               </form>
-            )}
-
-            {embyUsers && (
-              <div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 12 }}>
-                  Select a user profile:
-                </p>
-                {embyError && <div className="landing-error">{embyError}</div>}
-                {embyUsers.map((user) => (
-                  <button
-                    key={user.id}
-                    className="btn btn-full"
-                    style={{ marginBottom: 8, background: 'var(--color-emby, #52b54b)', color: '#fff' }}
-                    onClick={() => handleEmbyUserSelect(user.id)}
-                    disabled={connectingEmby}
-                  >
-                    {user.name}{user.isAdmin ? ' (Admin)' : ''}
-                  </button>
-                ))}
-                <button
-                  className="btn btn-ghost btn-full"
-                  type="button"
-                  onClick={() => { setEmbyUsers(undefined); setEmbyError(''); }}
-                  style={{ marginTop: 4 }}
-                >
-                  Back
-                </button>
-              </div>
             )}
           </div>
         )}

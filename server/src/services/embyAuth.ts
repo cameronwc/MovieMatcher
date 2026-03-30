@@ -7,30 +7,37 @@ interface EmbySystemInfo {
   Id: string;
 }
 
-interface EmbyUser {
-  Id: string;
-  Name: string;
-  Policy: {
-    IsAdministrator: boolean;
+interface EmbyAuthResult {
+  AccessToken: string;
+  User: {
+    Id: string;
+    Name: string;
+    Policy: {
+      IsAdministrator: boolean;
+    };
   };
+  ServerId: string;
 }
 
-function embyHeaders(apiKey: string): Record<string, string> {
-  return {
-    'X-Emby-Token': apiKey,
-    Accept: 'application/json',
-  };
+const EMBY_CLIENT = 'MovieMatcher';
+const EMBY_DEVICE = 'Web';
+const EMBY_DEVICE_ID = 'moviematcher-app';
+const EMBY_VERSION = '1.0.0';
+
+function embyAuthHeader(): string {
+  return `Emby Client="${EMBY_CLIENT}", Device="${EMBY_DEVICE}", DeviceId="${EMBY_DEVICE_ID}", Version="${EMBY_VERSION}"`;
 }
 
 /**
- * Validate connection to an Emby server using an API key.
+ * Validate connection to an Emby server (unauthenticated public info).
  */
-export async function validateEmbyConnection(
-  serverUrl: string,
-  apiKey: string
+export async function validateEmbyServer(
+  serverUrl: string
 ): Promise<{ serverName: string; serverId: string }> {
-  const url = `${serverUrl.replace(/\/+$/, '')}/emby/System/Info`;
-  const res = await fetch(url, { headers: embyHeaders(apiKey) });
+  const url = `${serverUrl.replace(/\/+$/, '')}/emby/System/Info/Public`;
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json' },
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to connect to Emby server: ${res.status} ${res.statusText}`);
@@ -41,25 +48,48 @@ export async function validateEmbyConnection(
 }
 
 /**
- * Fetch available users from an Emby server.
+ * Authenticate a local Emby user by username and password.
+ * Uses the AuthenticateByName endpoint which returns an access token.
  */
-export async function fetchEmbyUsers(
+export async function authenticateEmbyUser(
   serverUrl: string,
-  apiKey: string
-): Promise<Array<{ id: string; name: string; isAdmin: boolean }>> {
-  const url = `${serverUrl.replace(/\/+$/, '')}/emby/Users`;
-  const res = await fetch(url, { headers: embyHeaders(apiKey) });
+  username: string,
+  password: string
+): Promise<{ accessToken: string; userId: string; userName: string; serverName: string }> {
+  const normalizedUrl = serverUrl.replace(/\/+$/, '');
+
+  // First get server info
+  const { serverName } = await validateEmbyServer(normalizedUrl);
+
+  // Authenticate by username/password
+  const res = await fetch(`${normalizedUrl}/emby/Users/AuthenticateByName`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Emby-Authorization': embyAuthHeader(),
+    },
+    body: JSON.stringify({
+      Username: username,
+      Pw: password,
+    }),
+  });
 
   if (!res.ok) {
-    throw new Error(`Failed to fetch Emby users: ${res.status} ${res.statusText}`);
+    if (res.status === 401) {
+      throw new Error('Invalid username or password');
+    }
+    throw new Error(`Emby authentication failed: ${res.status} ${res.statusText}`);
   }
 
-  const users = (await res.json()) as EmbyUser[];
-  return users.map((u) => ({
-    id: u.Id,
-    name: u.Name,
-    isAdmin: u.Policy.IsAdministrator,
-  }));
+  const data = (await res.json()) as EmbyAuthResult;
+
+  return {
+    accessToken: data.AccessToken,
+    userId: data.User.Id,
+    userName: data.User.Name,
+    serverName,
+  };
 }
 
 /**

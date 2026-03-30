@@ -207,24 +207,17 @@ export function plexLogout(): Promise<{ success: boolean }> {
 }
 
 // Emby
-export interface EmbyConnectResult {
+export interface EmbyLoginResult {
   connected: boolean;
   serverName?: string;
   serverUrl?: string;
-  users?: Array<{ id: string; name: string; isAdmin: boolean }>;
+  userName?: string;
 }
 
-export function connectEmby(serverUrl: string, apiKey: string): Promise<EmbyConnectResult> {
-  return request<EmbyConnectResult>('/emby/connect', {
+export function embyLogin(serverUrl: string, username: string, password: string): Promise<EmbyLoginResult> {
+  return request<EmbyLoginResult>('/emby/login', {
     method: 'POST',
-    body: JSON.stringify({ serverUrl, apiKey }),
-  });
-}
-
-export function selectEmbyUser(serverUrl: string, apiKey: string, userId: string): Promise<EmbyConnectResult> {
-  return request<EmbyConnectResult>('/emby/select-user', {
-    method: 'POST',
-    body: JSON.stringify({ serverUrl, apiKey, userId }),
+    body: JSON.stringify({ serverUrl, username, password }),
   });
 }
 
