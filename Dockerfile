@@ -1,7 +1,7 @@
 # Stage 1: Build client
 FROM node:20-alpine AS client-build
 WORKDIR /app/client
-COPY client/package*.json ./
+COPY client/package*.json client/.npmrc* ./
 RUN npm ci
 COPY client/ ./
 RUN npm run build
