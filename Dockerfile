@@ -32,6 +32,7 @@ COPY --from=client-build /app/client/dist ./client/dist
 RUN mkdir -p /app/data
 
 ENV NODE_ENV=production
+ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 ENV PORT=3000
 ENV DB_PATH=/app/data/moviematcher.db
 

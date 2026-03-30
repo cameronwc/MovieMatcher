@@ -75,13 +75,21 @@ app.get('/api/media/poster', async (req, res) => {
     const plexToken = config?.auth_token || process.env.PLEX_TOKEN;
     if (!plexUrl || !plexToken) { res.status(503).end(); return; }
     const imageUrl = `${plexUrl}/photo/:/transcode?width=400&height=600&minSize=1&url=${encodeURIComponent(thumbUrl)}&X-Plex-Token=${plexToken}`;
-    const response = await fetch(imageUrl);
-    if (!response.ok) { res.status(response.status).end(); return; }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(imageUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) {
+      console.error(`Poster proxy error: Plex returned ${response.status} for ${thumbUrl}`);
+      res.status(response.status).end();
+      return;
+    }
     res.set('Content-Type', response.headers.get('content-type') || 'image/jpeg');
     res.set('Cache-Control', 'public, max-age=86400');
     const buffer = await response.arrayBuffer();
     res.send(Buffer.from(buffer));
-  } catch {
+  } catch (err) {
+    console.error('Poster proxy error:', err instanceof Error ? err.message : err);
     res.status(500).end();
   }
 });
