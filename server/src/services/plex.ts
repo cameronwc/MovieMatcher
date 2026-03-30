@@ -32,7 +32,11 @@ function getConfig() {
   // Check DB config first, fall back to env vars
   const dbConfig = getPlexConfig();
   if (dbConfig) {
-    return { url: dbConfig.server_url, token: dbConfig.auth_token };
+    // Env vars override OAuth-discovered URLs (useful when container can't reach the external URL)
+    return {
+      url: process.env.PLEX_URL || dbConfig.server_url,
+      token: process.env.PLEX_TOKEN || dbConfig.auth_token,
+    };
   }
   const url = process.env.PLEX_URL;
   const token = process.env.PLEX_TOKEN;
