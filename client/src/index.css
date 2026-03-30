@@ -43,9 +43,15 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html, body {
   height: 100%;
-  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  overflow: auto;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
 body {
@@ -269,6 +275,55 @@ h1, h2, h3, h4 {
   text-align: center;
 }
 
+.plex-card p {
+  margin-bottom: 4px;
+}
+
+.btn-plex {
+  background: #e5a00d;
+  color: #1a1a1a;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-plex:hover {
+  background: #f0b020;
+}
+
+.loading-spinner-sm {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-top-color: #1a1a1a;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.plex-connected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border-radius: var(--radius-full);
+}
+
+.plex-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
 /* ===========================
    Page Layout (with nav)
    =========================== */
@@ -351,6 +406,25 @@ h1, h2, h3, h4 {
   align-items: center;
   justify-content: center;
   padding: 8px;
+  pointer-events: none;
+}
+
+.swipe-stack-card {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 0;
+  bottom: 80px; /* leave room for stack to peek below */
+  transition: transform 0.15s ease;
+  transform-origin: center bottom;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.swipe-stack-card > div {
+  width: 100%;
+  height: 100%;
 }
 
 .swipe-actions {
@@ -412,6 +486,29 @@ h1, h2, h3, h4 {
   box-shadow: var(--shadow-lg);
 }
 
+.swipe-card-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.swipe-card-badge.movie {
+  background: rgba(229, 9, 20, 0.85);
+  color: white;
+}
+
+.swipe-card-badge.show {
+  background: rgba(56, 116, 255, 0.85);
+  color: white;
+}
+
 .swipe-card-poster {
   width: 100%;
   height: 100%;
@@ -427,6 +524,7 @@ h1, h2, h3, h4 {
   height: 50%;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.6) 40%, transparent 100%);
   pointer-events: none;
+  z-index: 1;
 }
 
 .swipe-card-info {
@@ -573,6 +671,15 @@ h1, h2, h3, h4 {
   font-size: 14px;
   line-height: 1.7;
   color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.trailer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  font-size: 14px;
 }
 
 /* Swipe direction indicators */
@@ -986,8 +1093,10 @@ h1, h2, h3, h4 {
 .bottom-nav {
   position: fixed;
   bottom: 0;
-  left: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
   height: var(--nav-height);
   background: var(--glass-bg);
   backdrop-filter: blur(20px);
@@ -1176,4 +1285,228 @@ h1, h2, h3, h4 {
     opacity: 0;
     transform: translateX(-50%) translateY(10px);
   }
+}
+
+/* ===========================
+   Admin Page
+   =========================== */
+
+.admin-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  animation: fadeInUp 0.6s ease;
+}
+
+.admin-login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.admin-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 24px;
+}
+
+.admin-login-form {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-error {
+  color: var(--red);
+  font-size: 14px;
+  text-align: center;
+}
+
+.admin-header {
+  padding: 20px 16px 8px;
+}
+
+.admin-content {
+  flex: 1;
+  padding: 0 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-section-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.admin-rooms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-room-block {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.admin-room-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition);
+}
+
+.admin-room-row:hover {
+  background: var(--bg-elevated);
+}
+
+.admin-room-row.expanded {
+  background: var(--bg-elevated);
+}
+
+.admin-room-code {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--accent);
+  min-width: 70px;
+}
+
+.admin-room-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-room-members {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.admin-room-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.admin-room-chevron {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.admin-room-matches {
+  border-top: 1px solid var(--border);
+}
+
+.admin-no-matches {
+  padding: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.admin-matches-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-match-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-match-item:last-child {
+  border-bottom: none;
+}
+
+.admin-match-poster {
+  width: 40px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--bg-elevated);
+}
+
+.admin-match-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-match-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-match-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.admin-match-rating {
+  color: #ffd700;
+  font-weight: 600;
+}
+
+.admin-match-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.admin-match-status {
+  flex-shrink: 0;
+}
+
+.admin-watched-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 14px;
+}
+
+.admin-unwatched-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }

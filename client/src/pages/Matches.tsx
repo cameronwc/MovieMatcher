@@ -103,7 +103,7 @@ export default function Matches() {
               className="match-card"
               onClick={() => setSelectedMatch(match)}
             >
-              {match.watched && <div className="match-card-watched">&#x2713;</div>}
+              {!!match.watched && <div className="match-card-watched">&#x2713;</div>}
               <img
                 className="match-card-poster"
                 src={match.media.poster_url}

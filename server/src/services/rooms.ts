@@ -6,7 +6,7 @@ function generateCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[crypto.randomInt(chars.length)];
   }
   return code;
 }
@@ -15,6 +15,11 @@ export function createRoom(
   code: string | undefined,
   nickname: string
 ): { room: RoomResponse; member: Pick<RoomMember, 'id' | 'nickname'>; sessionToken: string } {
+  // Validate nickname length
+  if (nickname.length > 30) {
+    throw new Error('Nickname must be 30 characters or less');
+  }
+
   // Generate a code if none was provided
   let roomCode = code?.trim().toUpperCase();
   if (!roomCode) {
@@ -30,6 +35,14 @@ export function createRoom(
     if (!roomCode) {
       throw new Error('Failed to generate a unique room code');
     }
+  }
+
+  // Validate room code
+  if (roomCode.length < 2 || roomCode.length > 20) {
+    throw new Error('Room code must be 2-20 characters');
+  }
+  if (!/^[A-Z0-9]+$/.test(roomCode)) {
+    throw new Error('Room code must contain only letters and numbers');
   }
 
   const sessionToken = crypto.randomUUID();
@@ -67,6 +80,11 @@ export function joinRoom(
   code: string,
   nickname: string
 ): { room: RoomResponse; member: Pick<RoomMember, 'id' | 'nickname'>; sessionToken: string } {
+  // Validate nickname length
+  if (nickname.length > 30) {
+    throw new Error('Nickname must be 30 characters or less');
+  }
+
   const roomCode = code.trim().toUpperCase();
   const room = db.prepare('SELECT * FROM rooms WHERE code = ?').get(roomCode) as Room | undefined;
 

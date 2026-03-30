@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   syncMediaForRoom,
   getNextMedia,
+  getNextMediaBatch,
   recordSwipe,
   getMatches,
   markWatched,
@@ -30,19 +31,25 @@ function validateRoomAccess(req: Request, res: Response): number | null {
   return member.room_id;
 }
 
-// GET /api/rooms/:code/media/next — get next unswiped media
+// GET /api/rooms/:code/media/next — get next unswiped media (supports ?count=N for batch)
 router.get('/:code/media/next', (req: Request, res: Response) => {
   try {
     const roomId = validateRoomAccess(req, res);
     if (roomId === null) return;
 
-    const media = getNextMedia(roomId, req.member!.id);
+    const count = Math.min(parseInt(req.query.count as string, 10) || 1, 50);
 
+    if (count > 1) {
+      const items = getNextMediaBatch(roomId, req.member!.id, count);
+      res.json({ media: items, caught_up: items.length === 0 });
+      return;
+    }
+
+    const media = getNextMedia(roomId, req.member!.id);
     if (!media) {
       res.json({ media: null, caught_up: true });
       return;
     }
-
     res.json({ media, caught_up: false });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to get next media';

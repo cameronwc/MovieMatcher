@@ -39,4 +39,12 @@ EXPOSE 3000
 
 VOLUME ["/app/data"]
 
+# I10: Run as non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+# I11: Health check
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:3000/api/health || exit 1
+
 CMD ["node", "server/dist/index.js"]

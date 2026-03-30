@@ -1,15 +1,15 @@
-const PLEX_URL = () => process.env.PLEX_URL || 'http://localhost:32400';
-const PLEX_TOKEN = () => process.env.PLEX_TOKEN || '';
+import { getPlexConfig } from './plexAuth.js';
 
 interface PlexSection {
   key: string;
-  type: string; // 'movie' | 'show' | 'artist' etc.
+  type: string;
   title: string;
 }
 
 interface PlexLibraryItem {
   ratingKey: string;
   rating?: number | null;
+  audienceRating?: number | null;
   type: string;
 }
 
@@ -21,28 +21,43 @@ interface PlexMetadata {
   summary?: string;
   thumb?: string;
   rating?: number;
+  audienceRating?: number;
   Genre?: Array<{ tag: string }>;
   duration?: number;
   contentRating?: string;
-  leafCount?: number; // episode count for TV shows
+  leafCount?: number;
 }
 
-function plexHeaders(): Record<string, string> {
+function getConfig() {
+  // Check DB config first, fall back to env vars
+  const dbConfig = getPlexConfig();
+  if (dbConfig) {
+    return { url: dbConfig.server_url, token: dbConfig.auth_token };
+  }
+  const url = process.env.PLEX_URL;
+  const token = process.env.PLEX_TOKEN;
+  if (url && token) {
+    return { url, token };
+  }
+  throw new Error('Plex is not configured. Please sign in with Plex first.');
+}
+
+function plexHeaders(token: string): Record<string, string> {
   return {
     Accept: 'application/json',
-    'X-Plex-Token': PLEX_TOKEN(),
+    'X-Plex-Token': token,
+    'X-Plex-Client-Identifier': 'moviematcher-app',
+    'X-Plex-Product': 'MovieMatcher',
   };
 }
 
 function buildPosterUrl(thumb: string): string {
-  const url = PLEX_URL();
-  const token = PLEX_TOKEN();
-  return `${url}/photo/:/transcode?width=400&height=600&minSize=1&url=${encodeURIComponent(thumb)}&X-Plex-Token=${token}`;
+  return `/api/media/poster?url=${encodeURIComponent(thumb)}`;
 }
 
 export async function fetchLibrarySections(): Promise<PlexSection[]> {
-  const url = `${PLEX_URL()}/library/sections`;
-  const res = await fetch(url, { headers: plexHeaders() });
+  const { url, token } = getConfig();
+  const res = await fetch(`${url}/library/sections`, { headers: plexHeaders(token) });
 
   if (!res.ok) {
     throw new Error(`Plex API error fetching sections: ${res.status} ${res.statusText}`);
@@ -60,11 +75,11 @@ export async function fetchLibrarySections(): Promise<PlexSection[]> {
     }));
 }
 
-export async function fetchLibraryItems(
-  sectionId: string
-): Promise<PlexLibraryItem[]> {
-  const url = `${PLEX_URL()}/library/sections/${sectionId}/all`;
-  const res = await fetch(url, { headers: plexHeaders() });
+export async function fetchLibraryItems(sectionId: string): Promise<PlexLibraryItem[]> {
+  const { url, token } = getConfig();
+  const res = await fetch(`${url}/library/sections/${sectionId}/all`, {
+    headers: plexHeaders(token),
+  });
 
   if (!res.ok) {
     throw new Error(`Plex API error fetching section ${sectionId}: ${res.status} ${res.statusText}`);
@@ -75,7 +90,7 @@ export async function fetchLibraryItems(
 
   return items.map((item: PlexLibraryItem) => ({
     ratingKey: item.ratingKey,
-    rating: item.rating ?? null,
+    rating: item.audienceRating ?? item.rating ?? null,
     type: item.type,
   }));
 }
@@ -93,8 +108,10 @@ export async function fetchItemMetadata(ratingKey: string): Promise<{
   content_rating: string | null;
   episode_count: number | null;
 }> {
-  const url = `${PLEX_URL()}/library/metadata/${ratingKey}`;
-  const res = await fetch(url, { headers: plexHeaders() });
+  const { url, token } = getConfig();
+  const res = await fetch(`${url}/library/metadata/${ratingKey}`, {
+    headers: plexHeaders(token),
+  });
 
   if (!res.ok) {
     throw new Error(`Plex API error fetching metadata for ${ratingKey}: ${res.status} ${res.statusText}`);
@@ -110,8 +127,9 @@ export async function fetchItemMetadata(ratingKey: string): Promise<{
   const mediaType = metadata.type === 'show' ? 'show' : 'movie';
   const genres = metadata.Genre?.map((g) => g.tag).join(', ') ?? null;
   const posterUrl = metadata.thumb ? buildPosterUrl(metadata.thumb) : null;
-  // Plex returns duration in milliseconds; convert to minutes
   const durationMinutes = metadata.duration ? Math.round(metadata.duration / 60000) : null;
+  // Use audienceRating (Rotten Tomatoes) if available, fall back to rating
+  const rating = metadata.audienceRating ?? metadata.rating ?? null;
 
   return {
     plex_rating_key: metadata.ratingKey,
@@ -120,7 +138,7 @@ export async function fetchItemMetadata(ratingKey: string): Promise<{
     year: metadata.year ?? null,
     summary: metadata.summary ?? null,
     poster_url: posterUrl,
-    rating: metadata.rating ?? null,
+    rating,
     genre: genres,
     duration: durationMinutes,
     content_rating: metadata.contentRating ?? null,

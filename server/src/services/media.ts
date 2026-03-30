@@ -40,9 +40,12 @@ export async function syncMediaForRoom(roomId: number): Promise<number[]> {
   const swipedKeySet = new Set(swipedKeys.map((r) => r.plex_rating_key));
   const available = filtered.filter((item) => !swipedKeySet.has(item.ratingKey));
 
-  // 5. Randomly pick 50
-  const shuffled = available.sort(() => Math.random() - 0.5);
-  const selected = shuffled.slice(0, 50);
+  // 5. Randomly pick 50 (Fisher-Yates shuffle)
+  for (let i = available.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [available[i], available[j]] = [available[j], available[i]];
+  }
+  const selected = available.slice(0, 50);
 
   if (selected.length === 0) {
     return [];
@@ -82,7 +85,7 @@ export async function syncMediaForRoom(roomId: number): Promise<number[]> {
   const batchNumber = maxBatch.max_batch + 1;
 
   const insertRoomMedia = db.prepare(
-    'INSERT INTO room_media (room_id, media_id, batch_number) VALUES (?, ?, ?)'
+    'INSERT OR IGNORE INTO room_media (room_id, media_id, batch_number) VALUES (?, ?, ?)'
   );
 
   const mediaIds: number[] = [];
@@ -121,8 +124,15 @@ export async function syncMediaForRoom(roomId: number): Promise<number[]> {
  * Get the next unswiped media item for a member in a room.
  */
 export function getNextMedia(roomId: number, memberId: number): Media | null {
-  // Find the first media in the room's batch that this member hasn't swiped on yet
-  const media = db
+  const items = getNextMediaBatch(roomId, memberId, 1);
+  return items[0] ?? null;
+}
+
+/**
+ * Get the next N unswiped media items for a member in a room.
+ */
+export function getNextMediaBatch(roomId: number, memberId: number, count: number): Media[] {
+  const items = db
     .prepare(
       `SELECT m.*
        FROM room_media rm
@@ -134,11 +144,11 @@ export function getNextMedia(roomId: number, memberId: number): Media | null {
            WHERE s.room_id = ? AND s.member_id = ?
          )
        ORDER BY rm.batch_number ASC, rm.id ASC
-       LIMIT 1`
+       LIMIT ?`
     )
-    .get(roomId, roomId, memberId) as Media | undefined;
+    .all(roomId, roomId, memberId, count) as Media[];
 
-  return media ?? null;
+  return items;
 }
 
 /**
@@ -175,6 +185,11 @@ export function checkForMatch(roomId: number, mediaId: number): MatchWithMedia |
       count: number;
     }
   ).count;
+
+  // Need at least 2 members for a match
+  if (totalMembers < 2) {
+    return null;
+  }
 
   // Count members who swiped right on this media
   const rightSwipes = (

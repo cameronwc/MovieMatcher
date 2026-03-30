@@ -72,7 +72,17 @@ export function initDb(): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
       media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
-      batch_number INTEGER NOT NULL
+      batch_number INTEGER NOT NULL,
+      UNIQUE(room_id, media_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS plex_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      auth_token TEXT NOT NULL,
+      server_name TEXT,
+      server_url TEXT NOT NULL,
+      machine_id TEXT,
+      updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_room_members_room_id ON room_members(room_id);

@@ -24,6 +24,7 @@ router.post('/', (req: Request, res: Response) => {
       sameSite: 'lax',
       path: '/',
       secure: process.env.NODE_ENV === 'production',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     res.status(201).json({
@@ -31,8 +32,10 @@ router.post('/', (req: Request, res: Response) => {
       member: result.member,
     });
 
-    // Fire-and-forget: sync Plex media for the new room
-    syncMediaForRoom(result.room.id).catch(() => {});
+    // Fire-and-forget: sync Plex media for the new room (I9: log errors)
+    syncMediaForRoom(result.room.id).catch((err) => {
+      console.error(`Initial Plex sync failed for room ${result.room.code}:`, err instanceof Error ? err.message : err);
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to create room';
     // Duplicate code → 409
@@ -84,6 +87,7 @@ router.post('/:code/join', (req: Request, res: Response) => {
       sameSite: 'lax',
       path: '/',
       secure: process.env.NODE_ENV === 'production',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     res.json({
@@ -105,6 +109,19 @@ router.post('/:code/join', (req: Request, res: Response) => {
     }
     res.status(500).json({ error: message });
   }
+});
+
+// GET /api/rooms/:code/me — check if current user is a member of this room
+router.get('/:code/me', requireAuth, (req: Request, res: Response) => {
+  const member = req.member!;
+  const code = (req.params.code as string).trim().toUpperCase();
+
+  if (member.room_code !== code) {
+    res.status(403).json({ error: 'You are not a member of this room' });
+    return;
+  }
+
+  res.json({ member: { id: member.id, nickname: member.nickname } });
 });
 
 export default router;
