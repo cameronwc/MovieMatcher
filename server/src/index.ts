@@ -59,11 +59,17 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// C1: Poster image proxy — serves Plex poster images without exposing the token
+// Poster image proxy — serves Plex poster images without exposing the token
+// SSRF protection: only allow Plex metadata thumb paths
 app.get('/api/media/poster', async (req, res) => {
   try {
     const thumbUrl = req.query.url as string;
     if (!thumbUrl) { res.status(400).end(); return; }
+    // Validate URL is a Plex metadata thumb path (prevent SSRF)
+    if (!thumbUrl.startsWith('/library/metadata/')) {
+      res.status(400).json({ error: 'Invalid thumb URL' });
+      return;
+    }
     const config = getPlexConfig();
     const plexUrl = config?.server_url || process.env.PLEX_URL;
     const plexToken = config?.auth_token || process.env.PLEX_TOKEN;

@@ -8,7 +8,6 @@ import {
   getMatches,
   markWatched,
 } from '../services/media.js';
-import { getRoom } from '../services/rooms.js';
 import { emitMatch, emitSyncComplete } from '../socket.js';
 import type { SwipeRequest } from '../types.js';
 

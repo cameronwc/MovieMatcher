@@ -1,4 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import crypto from 'node:crypto';
+import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db.js';
 
@@ -8,6 +10,16 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
 
 // In-memory set of valid admin tokens
 const adminTokens = new Set<string>();
+
+// Rate limit admin login: 5 attempts per 15 minutes
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many login attempts, try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
 
 // Admin auth middleware (exported for use in other routes)
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -22,10 +34,20 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 // POST /api/admin/login
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', loginLimiter, (req: Request, res: Response) => {
   const { password } = req.body as { password?: string };
 
-  if (password !== ADMIN_PASSWORD) {
+  // Timing-safe password comparison
+  let passwordMatch = false;
+  if (password) {
+    const expected = Buffer.from(ADMIN_PASSWORD);
+    const received = Buffer.from(password);
+    if (expected.length === received.length) {
+      passwordMatch = crypto.timingSafeEqual(expected, received);
+    }
+  }
+
+  if (!passwordMatch) {
     res.status(401).json({ error: 'Invalid password' });
     return;
   }

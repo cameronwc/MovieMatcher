@@ -17,7 +17,7 @@ export default function Swipe({ onMatch }: SwipePageProps) {
   const [cards, setCards] = useState<Media[]>([]);
   const [swipedIds, setSwipedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [caughtUp, setCaughtUp] = useState(false);
+  const [_caughtUp, setCaughtUp] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [memberCount, setMemberCount] = useState(0);
   const [swipeDir, setSwipeDir] = useState<'left' | 'right' | null>(null);

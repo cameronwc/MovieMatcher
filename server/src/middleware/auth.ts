@@ -4,6 +4,7 @@ import type { AuthenticatedMember } from '../types.js';
 
 // Extend Express Request to include member
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       member?: AuthenticatedMember;
