@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/api.ts","./src/main.tsx","./src/socket.ts","./src/components/BottomNav.tsx","./src/components/MatchPopup.tsx","./src/components/SwipeCard.tsx","./src/pages/Admin.tsx","./src/pages/Landing.tsx","./src/pages/Matches.tsx","./src/pages/Room.tsx","./src/pages/Swipe.tsx"],"version":"5.9.3"}
