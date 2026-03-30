@@ -18,9 +18,21 @@ export interface RoomMember {
   joined_at: string;
 }
 
+export type MediaServerType = 'plex' | 'emby';
+
+export interface MediaServerConfig {
+  server_type: MediaServerType;
+  auth_token: string;
+  server_name: string | null;
+  server_url: string;
+  machine_id: string | null;
+  user_id: string | null;
+}
+
 export interface Media {
   id: number;
-  plex_rating_key: string;
+  source: MediaServerType;
+  source_id: string;
   type: 'movie' | 'show';
   title: string;
   year: number | null;

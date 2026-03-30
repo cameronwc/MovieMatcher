@@ -1,5 +1,4 @@
 import { Router, type Request, type Response } from 'express';
-import { db } from '../db.js';
 import {
   createPlexPin,
   getPlexAuthUrl,
@@ -8,6 +7,8 @@ import {
   findBestConnection,
   savePlexConfig,
   getPlexConfig,
+  getMediaServerConfig,
+  deleteMediaServerConfig,
 } from '../services/plexAuth.js';
 import { requireAdmin } from './admin.js';
 
@@ -30,6 +31,28 @@ router.get('/status', (_req: Request, res: Response) => {
     });
   } else {
     res.json({ configured: false });
+  }
+});
+
+// GET /api/plex/media-server-status — unified status for any configured media server
+router.get('/media-server-status', (_req: Request, res: Response) => {
+  const config = getMediaServerConfig();
+  if (config) {
+    res.json({
+      configured: true,
+      serverType: config.server_type,
+      serverName: config.server_name,
+      serverUrl: config.server_url,
+    });
+  } else if (process.env.PLEX_URL && process.env.PLEX_TOKEN) {
+    res.json({
+      configured: true,
+      serverType: 'plex',
+      serverName: 'Environment Config',
+      serverUrl: process.env.PLEX_URL,
+    });
+  } else {
+    res.json({ configured: false, serverType: null });
   }
 });
 
@@ -59,10 +82,10 @@ router.get('/auth-url', (req: Request, res: Response) => {
 // POST /api/plex/check-pin — check if a PIN has been authorized
 router.post('/check-pin', async (req: Request, res: Response) => {
   try {
-    // Prevent reconfiguration if Plex is already set up
-    const existingConfig = getPlexConfig();
+    // Prevent reconfiguration if any media server is already set up
+    const existingConfig = getMediaServerConfig();
     if (existingConfig) {
-      res.status(403).json({ error: 'Plex is already configured. Use admin panel to reconfigure.' });
+      res.status(403).json({ error: 'A media server is already configured. Use admin panel to reconfigure.' });
       return;
     }
 
@@ -127,10 +150,10 @@ router.post('/check-pin', async (req: Request, res: Response) => {
 // POST /api/plex/select-server — select a server when multiple are available
 router.post('/select-server', async (req: Request, res: Response) => {
   try {
-    // Prevent reconfiguration if Plex is already set up
-    const existingConfig = getPlexConfig();
+    // Prevent reconfiguration if any media server is already set up
+    const existingConfig = getMediaServerConfig();
     if (existingConfig) {
-      res.status(403).json({ error: 'Plex is already configured. Use admin panel to reconfigure.' });
+      res.status(403).json({ error: 'A media server is already configured. Use admin panel to reconfigure.' });
       return;
     }
 
@@ -172,10 +195,10 @@ router.post('/select-server', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/plex/logout — clear Plex config (admin only)
+// POST /api/plex/logout — clear media server config (admin only)
 router.post('/logout', requireAdmin, (_req: Request, res: Response) => {
   try {
-    db.prepare('DELETE FROM plex_config WHERE id = 1').run();
+    deleteMediaServerConfig();
     res.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to logout';

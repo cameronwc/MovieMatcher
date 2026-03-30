@@ -6,7 +6,8 @@ const BASE = '/api';
 
 export interface Media {
   id: number;
-  plex_rating_key: string;
+  source: 'plex' | 'emby';
+  source_id: string;
   type: 'movie' | 'show';
   title: string;
   year: number;
@@ -149,6 +150,18 @@ export function syncLibrary(code: string): Promise<SyncResponse> {
   });
 }
 
+// Media Server Status (unified)
+export interface MediaServerStatus {
+  configured: boolean;
+  serverType?: 'plex' | 'emby' | null;
+  serverName?: string;
+  serverUrl?: string;
+}
+
+export function getMediaServerStatus(): Promise<MediaServerStatus> {
+  return request<MediaServerStatus>('/plex/media-server-status');
+}
+
 // Plex OAuth
 export interface PlexStatus {
   configured: boolean;
@@ -191,6 +204,32 @@ export function selectPlexServer(pinId: number, machineId: string): Promise<{ se
 
 export function plexLogout(): Promise<{ success: boolean }> {
   return request<{ success: boolean }>('/plex/logout', { method: 'POST' });
+}
+
+// Emby
+export interface EmbyConnectResult {
+  connected: boolean;
+  serverName?: string;
+  serverUrl?: string;
+  users?: Array<{ id: string; name: string; isAdmin: boolean }>;
+}
+
+export function connectEmby(serverUrl: string, apiKey: string): Promise<EmbyConnectResult> {
+  return request<EmbyConnectResult>('/emby/connect', {
+    method: 'POST',
+    body: JSON.stringify({ serverUrl, apiKey }),
+  });
+}
+
+export function selectEmbyUser(serverUrl: string, apiKey: string, userId: string): Promise<EmbyConnectResult> {
+  return request<EmbyConnectResult>('/emby/select-user', {
+    method: 'POST',
+    body: JSON.stringify({ serverUrl, apiKey, userId }),
+  });
+}
+
+export function embyLogout(): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>('/emby/logout', { method: 'POST' });
 }
 
 // Admin

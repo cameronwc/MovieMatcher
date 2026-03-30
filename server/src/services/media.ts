@@ -1,46 +1,105 @@
 import { db } from '../db.js';
 import { fetchLibrarySections, fetchLibraryItems, fetchItemMetadata } from './plex.js';
-import type { Media, Match, MatchWithMedia } from '../types.js';
+import { fetchEmbyLibraries, fetchEmbyLibraryItems, fetchEmbyItemMetadata } from './emby.js';
+import { getMediaServerConfig } from './plexAuth.js';
+import type { Media, Match, MatchWithMedia, MediaServerType } from '../types.js';
+
+interface NormalizedMetadata {
+  source: MediaServerType;
+  source_id: string;
+  type: 'movie' | 'show';
+  title: string;
+  year: number | null;
+  summary: string | null;
+  poster_url: string | null;
+  rating: number | null;
+  genre: string | null;
+  duration: number | null;
+  content_rating: string | null;
+  episode_count: number | null;
+}
 
 /**
- * Orchestrates Plex sync for a room: fetches library, filters, picks 50,
+ * Fetch all library items from the configured media server.
+ * Returns lightweight items with source_id + rating.
+ */
+async function fetchAllItems(): Promise<Array<{ sourceId: string; rating: number | null; type: string }>> {
+  const config = getMediaServerConfig();
+  if (!config) throw new Error('No media server configured.');
+
+  const allItems: Array<{ sourceId: string; rating: number | null; type: string }> = [];
+
+  if (config.server_type === 'plex') {
+    const sections = await fetchLibrarySections();
+    for (const section of sections) {
+      const items = await fetchLibraryItems(section.key);
+      allItems.push(
+        ...items.map((item) => ({
+          sourceId: item.ratingKey,
+          rating: item.rating ?? null,
+          type: item.type,
+        }))
+      );
+    }
+  } else {
+    const libraries = await fetchEmbyLibraries();
+    for (const lib of libraries) {
+      const items = await fetchEmbyLibraryItems(lib.id);
+      allItems.push(
+        ...items.map((item) => ({
+          sourceId: item.id,
+          rating: item.rating ?? null,
+          type: item.type,
+        }))
+      );
+    }
+  }
+
+  return allItems;
+}
+
+/**
+ * Fetch full metadata for a single item from the configured media server.
+ */
+async function fetchMetadata(sourceId: string): Promise<NormalizedMetadata> {
+  const config = getMediaServerConfig();
+  if (!config) throw new Error('No media server configured.');
+
+  if (config.server_type === 'plex') {
+    return fetchItemMetadata(sourceId);
+  } else {
+    return fetchEmbyItemMetadata(sourceId);
+  }
+}
+
+/**
+ * Orchestrates media sync for a room: fetches library, filters, picks 50,
  * fetches full metadata, upserts into media table, and associates with room.
  */
 export async function syncMediaForRoom(roomId: number): Promise<number[]> {
-  // 1. Fetch all library sections (movies + TV shows)
-  const sections = await fetchLibrarySections();
+  const config = getMediaServerConfig();
+  if (!config) throw new Error('No media server configured.');
 
-  // 2. For each section, fetch items (lightweight: ratingKey + rating)
-  const allItems: Array<{ ratingKey: string; rating: number | null; type: string }> = [];
-  for (const section of sections) {
-    const items = await fetchLibraryItems(section.key);
-    allItems.push(
-      ...items.map((item) => ({
-        ratingKey: item.ratingKey,
-        rating: item.rating ?? null,
-        type: item.type,
-      }))
-    );
-  }
+  // 1. Fetch all library items (lightweight)
+  const allItems = await fetchAllItems();
 
-  // 3. Filter to rating >= 5.0
+  // 2. Filter to rating >= 5.0
   const filtered = allItems.filter((item) => item.rating != null && item.rating >= 5.0);
 
-  // 4. Exclude media already swiped by ANY member in this room
-  // Get all plex_rating_keys that have been swiped in this room
+  // 3. Exclude media already swiped by ANY member in this room
   const swipedKeys = db
     .prepare(
-      `SELECT DISTINCT m.plex_rating_key
+      `SELECT DISTINCT m.source_id
        FROM swipes s
        JOIN media m ON m.id = s.media_id
        WHERE s.room_id = ?`
     )
-    .all(roomId) as Array<{ plex_rating_key: string }>;
+    .all(roomId) as Array<{ source_id: string }>;
 
-  const swipedKeySet = new Set(swipedKeys.map((r) => r.plex_rating_key));
-  const available = filtered.filter((item) => !swipedKeySet.has(item.ratingKey));
+  const swipedKeySet = new Set(swipedKeys.map((r) => r.source_id));
+  const available = filtered.filter((item) => !swipedKeySet.has(item.sourceId));
 
-  // 5. Randomly pick 50 (Fisher-Yates shuffle)
+  // 4. Randomly pick 50 (Fisher-Yates shuffle)
   for (let i = available.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [available[i], available[j]] = [available[j], available[i]];
@@ -51,20 +110,20 @@ export async function syncMediaForRoom(roomId: number): Promise<number[]> {
     return [];
   }
 
-  // 6. Fetch full metadata for those 50
+  // 5. Fetch full metadata for those 50
   const metadataResults = await Promise.allSettled(
-    selected.map((item) => fetchItemMetadata(item.ratingKey))
+    selected.map((item) => fetchMetadata(item.sourceId))
   );
 
   const metadataList = metadataResults
-    .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof fetchItemMetadata>>> => r.status === 'fulfilled')
+    .filter((r): r is PromiseFulfilledResult<NormalizedMetadata> => r.status === 'fulfilled')
     .map((r) => r.value);
 
-  // 7. Upsert into media table
+  // 6. Upsert into media table
   const upsertMedia = db.prepare(`
-    INSERT INTO media (plex_rating_key, type, title, year, summary, poster_url, rating, genre, duration, content_rating, episode_count, last_synced_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(plex_rating_key) DO UPDATE SET
+    INSERT INTO media (source, source_id, type, title, year, summary, poster_url, rating, genre, duration, content_rating, episode_count, last_synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(source, source_id) DO UPDATE SET
       type = excluded.type,
       title = excluded.title,
       year = excluded.year,
@@ -93,7 +152,8 @@ export async function syncMediaForRoom(roomId: number): Promise<number[]> {
   const txn = db.transaction(() => {
     for (const meta of metadataList) {
       upsertMedia.run(
-        meta.plex_rating_key,
+        meta.source,
+        meta.source_id,
         meta.type,
         meta.title,
         meta.year,
@@ -107,8 +167,8 @@ export async function syncMediaForRoom(roomId: number): Promise<number[]> {
       );
 
       const mediaRow = db
-        .prepare('SELECT id FROM media WHERE plex_rating_key = ?')
-        .get(meta.plex_rating_key) as { id: number };
+        .prepare('SELECT id FROM media WHERE source = ? AND source_id = ?')
+        .get(meta.source, meta.source_id) as { id: number };
 
       insertRoomMedia.run(roomId, mediaRow.id, batchNumber);
       mediaIds.push(mediaRow.id);
@@ -232,7 +292,7 @@ export function checkForMatch(roomId: number, mediaId: number): MatchWithMedia |
 export function getMatches(roomId: number, watched?: boolean): MatchWithMedia[] {
   let query = `
     SELECT matches.*, media.id as media_id,
-           media.plex_rating_key, media.type, media.title, media.year,
+           media.source, media.source_id, media.type, media.title, media.year,
            media.summary, media.poster_url, media.rating, media.genre,
            media.duration, media.content_rating, media.episode_count,
            media.last_synced_at
@@ -252,7 +312,8 @@ export function getMatches(roomId: number, watched?: boolean): MatchWithMedia[] 
 
   const rows = db.prepare(query).all(...params) as Array<
     Match & {
-      plex_rating_key: string;
+      source: 'plex' | 'emby';
+      source_id: string;
       type: 'movie' | 'show';
       title: string;
       year: number | null;
@@ -276,7 +337,8 @@ export function getMatches(roomId: number, watched?: boolean): MatchWithMedia[] 
     watched_at: row.watched_at,
     media: {
       id: row.media_id,
-      plex_rating_key: row.plex_rating_key,
+      source: row.source,
+      source_id: row.source_id,
       type: row.type,
       title: row.title,
       year: row.year,

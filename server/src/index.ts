@@ -8,10 +8,11 @@ import cors from 'cors';
 
 import { db, initDb } from './db.js';
 import { setupSocket } from './socket.js';
-import { getPlexConfig } from './services/plexAuth.js';
+import { getPlexConfig, getMediaServerConfig } from './services/plexAuth.js';
 import roomsRouter from './routes/rooms.js';
 import mediaRouter from './routes/media.js';
 import plexRouter from './routes/plex.js';
+import embyRouter from './routes/emby.js';
 import adminRouter from './routes/admin.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -59,22 +60,42 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// C1: Poster image proxy — serves Plex poster images without exposing the token
+// Poster image proxy — serves poster images without exposing tokens
 app.get('/api/media/poster', async (req, res) => {
   try {
-    const thumbUrl = req.query.url as string;
-    if (!thumbUrl) { res.status(400).end(); return; }
-    const config = getPlexConfig();
-    const plexUrl = config?.server_url || process.env.PLEX_URL;
-    const plexToken = config?.auth_token || process.env.PLEX_TOKEN;
-    if (!plexUrl || !plexToken) { res.status(503).end(); return; }
-    const imageUrl = `${plexUrl}/photo/:/transcode?width=400&height=600&minSize=1&url=${encodeURIComponent(thumbUrl)}&X-Plex-Token=${plexToken}`;
-    const response = await fetch(imageUrl);
-    if (!response.ok) { res.status(response.status).end(); return; }
-    res.set('Content-Type', response.headers.get('content-type') || 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=86400');
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    const source = (req.query.source as string) || 'plex';
+
+    if (source === 'emby') {
+      // Emby poster proxy
+      const itemId = req.query.id as string;
+      if (!itemId) { res.status(400).end(); return; }
+      const config = getMediaServerConfig();
+      if (!config || config.server_type !== 'emby') { res.status(503).end(); return; }
+      const imageUrl = `${config.server_url}/emby/Items/${encodeURIComponent(itemId)}/Images/Primary?maxWidth=400&maxHeight=600`;
+      const response = await fetch(imageUrl, {
+        headers: { 'X-Emby-Token': config.auth_token },
+      });
+      if (!response.ok) { res.status(response.status).end(); return; }
+      res.set('Content-Type', response.headers.get('content-type') || 'image/jpeg');
+      res.set('Cache-Control', 'public, max-age=86400');
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } else {
+      // Plex poster proxy (original behavior)
+      const thumbUrl = req.query.url as string;
+      if (!thumbUrl) { res.status(400).end(); return; }
+      const config = getPlexConfig();
+      const plexUrl = config?.server_url || process.env.PLEX_URL;
+      const plexToken = config?.auth_token || process.env.PLEX_TOKEN;
+      if (!plexUrl || !plexToken) { res.status(503).end(); return; }
+      const imageUrl = `${plexUrl}/photo/:/transcode?width=400&height=600&minSize=1&url=${encodeURIComponent(thumbUrl)}&X-Plex-Token=${plexToken}`;
+      const response = await fetch(imageUrl);
+      if (!response.ok) { res.status(response.status).end(); return; }
+      res.set('Content-Type', response.headers.get('content-type') || 'image/jpeg');
+      res.set('Cache-Control', 'public, max-age=86400');
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    }
   } catch {
     res.status(500).end();
   }
@@ -82,6 +103,7 @@ app.get('/api/media/poster', async (req, res) => {
 
 // API routes
 app.use('/api/plex', plexRouter);
+app.use('/api/emby', embyRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/rooms', roomsRouter);
 // Media routes are mounted under /api/rooms because they use :code param

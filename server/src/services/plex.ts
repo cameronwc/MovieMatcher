@@ -96,7 +96,8 @@ export async function fetchLibraryItems(sectionId: string): Promise<PlexLibraryI
 }
 
 export async function fetchItemMetadata(ratingKey: string): Promise<{
-  plex_rating_key: string;
+  source: 'plex';
+  source_id: string;
   type: 'movie' | 'show';
   title: string;
   year: number | null;
@@ -132,7 +133,8 @@ export async function fetchItemMetadata(ratingKey: string): Promise<{
   const rating = metadata.audienceRating ?? metadata.rating ?? null;
 
   return {
-    plex_rating_key: metadata.ratingKey,
+    source: 'plex',
+    source_id: metadata.ratingKey,
     type: mediaType,
     title: metadata.title,
     year: metadata.year ?? null,

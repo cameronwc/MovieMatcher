@@ -3,26 +3,40 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createRoom,
   joinRoom,
-  getPlexStatus,
+  getMediaServerStatus,
   createPlexPin,
   getPlexAuthUrl,
   checkPlexPin,
-  type PlexStatus,
+  connectEmby,
+  selectEmbyUser,
+  type MediaServerStatus,
+  type EmbyConnectResult,
 } from '../api';
 
 export default function Landing() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const [plexStatus, setPlexStatus] = useState<PlexStatus | null>(null);
-  const [plexLoading, setPlexLoading] = useState(true);
+  const [serverStatus, setServerStatus] = useState<MediaServerStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  // Plex auth state
   const [plexError, setPlexError] = useState('');
   const [connectingPlex, setConnectingPlex] = useState(false);
-
-  // PIN polling state
   const [pinId, setPinId] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Emby auth state
+  const [showEmbyForm, setShowEmbyForm] = useState(false);
+  const [embyUrl, setEmbyUrl] = useState('');
+  const [embyApiKey, setEmbyApiKey] = useState('');
+  const [embyError, setEmbyError] = useState('');
+  const [connectingEmby, setConnectingEmby] = useState(false);
+  const [embyUsers, setEmbyUsers] = useState<EmbyConnectResult['users']>(undefined);
+  const [pendingEmbyUrl, setPendingEmbyUrl] = useState('');
+  const [pendingEmbyKey, setPendingEmbyKey] = useState('');
+
+  // Room state
   const [createNickname, setCreateNickname] = useState('');
   const [createCode, setCreateCode] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
@@ -33,12 +47,12 @@ export default function Landing() {
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState('');
 
-  // Check Plex status on mount
+  // Check media server status on mount
   useEffect(() => {
-    getPlexStatus()
-      .then(setPlexStatus)
-      .catch(() => setPlexStatus({ configured: false }))
-      .finally(() => setPlexLoading(false));
+    getMediaServerStatus()
+      .then(setServerStatus)
+      .catch(() => setServerStatus({ configured: false }))
+      .finally(() => setStatusLoading(false));
   }, []);
 
   // If returning from Plex auth (forward URL), poll for the PIN
@@ -66,16 +80,16 @@ export default function Landing() {
           setPinId(null);
 
           if (result.serverName) {
-            setPlexStatus({
+            setServerStatus({
               configured: true,
+              serverType: 'plex',
               serverName: result.serverName,
               serverUrl: result.serverUrl,
             });
           } else if (result.servers && result.servers.length > 0) {
-            // Multiple servers — for now auto-select first
-            // TODO: server selection UI if needed
-            setPlexStatus({
+            setServerStatus({
               configured: true,
+              serverType: 'plex',
               serverName: result.servers[0].name,
             });
           }
@@ -110,6 +124,58 @@ export default function Landing() {
     } catch (err) {
       setConnectingPlex(false);
       setPlexError(err instanceof Error ? err.message : 'Failed to start Plex sign-in');
+    }
+  }
+
+  async function handleEmbyConnect(e: FormEvent) {
+    e.preventDefault();
+    if (!embyUrl.trim() || !embyApiKey.trim()) return;
+
+    setEmbyError('');
+    setConnectingEmby(true);
+    try {
+      const result = await connectEmby(embyUrl.trim(), embyApiKey.trim());
+
+      if (result.connected) {
+        setServerStatus({
+          configured: true,
+          serverType: 'emby',
+          serverName: result.serverName,
+          serverUrl: result.serverUrl,
+        });
+        setShowEmbyForm(false);
+      } else if (result.users && result.users.length > 0) {
+        // Multiple users — show selection
+        setEmbyUsers(result.users);
+        setPendingEmbyUrl(embyUrl.trim());
+        setPendingEmbyKey(embyApiKey.trim());
+      }
+    } catch (err) {
+      setEmbyError(err instanceof Error ? err.message : 'Failed to connect to Emby');
+    } finally {
+      setConnectingEmby(false);
+    }
+  }
+
+  async function handleEmbyUserSelect(userId: string) {
+    setEmbyError('');
+    setConnectingEmby(true);
+    try {
+      const result = await selectEmbyUser(pendingEmbyUrl, pendingEmbyKey, userId);
+      if (result.connected) {
+        setServerStatus({
+          configured: true,
+          serverType: 'emby',
+          serverName: result.serverName,
+          serverUrl: result.serverUrl,
+        });
+        setShowEmbyForm(false);
+        setEmbyUsers(undefined);
+      }
+    } catch (err) {
+      setEmbyError(err instanceof Error ? err.message : 'Failed to select user');
+    } finally {
+      setConnectingEmby(false);
     }
   }
 
@@ -152,6 +218,8 @@ export default function Landing() {
     }
   }
 
+  const serverLabel = serverStatus?.serverType === 'emby' ? 'Emby' : 'Plex';
+
   return (
     <div className="landing">
       <div className="landing-logo">🎬</div>
@@ -161,36 +229,129 @@ export default function Landing() {
       <p className="landing-tagline">Swipe together, watch together</p>
 
       <div className="landing-cards">
-        {/* Plex Connection Status */}
-        {!plexLoading && !plexStatus?.configured && (
+        {/* Media Server Connection */}
+        {!statusLoading && !serverStatus?.configured && (
           <div className="landing-card plex-card">
-            <h2>Connect to Plex</h2>
+            <h2>Connect Media Server</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-              Sign in with your Plex account to access your media library.
+              Connect your Plex or Emby server to access your media library.
             </p>
-            {plexError && <div className="landing-error">{plexError}</div>}
-            <button
-              className="btn btn-plex btn-full"
-              onClick={handlePlexSignIn}
-              disabled={connectingPlex}
-            >
-              {connectingPlex ? (
-                <>
-                  <span className="loading-spinner-sm" />
-                  Waiting for Plex...
-                </>
-              ) : (
-                'Sign in with Plex'
-              )}
-            </button>
+
+            {!showEmbyForm && !embyUsers && (
+              <>
+                {plexError && <div className="landing-error">{plexError}</div>}
+                <button
+                  className="btn btn-plex btn-full"
+                  onClick={handlePlexSignIn}
+                  disabled={connectingPlex}
+                >
+                  {connectingPlex ? (
+                    <>
+                      <span className="loading-spinner-sm" />
+                      Waiting for Plex...
+                    </>
+                  ) : (
+                    'Sign in with Plex'
+                  )}
+                </button>
+                <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13, margin: '12px 0' }}>
+                  or
+                </div>
+                <button
+                  className="btn btn-full"
+                  style={{ background: 'var(--color-emby, #52b54b)', color: '#fff' }}
+                  onClick={() => setShowEmbyForm(true)}
+                >
+                  Connect Emby Server
+                </button>
+              </>
+            )}
+
+            {showEmbyForm && !embyUsers && (
+              <form onSubmit={handleEmbyConnect}>
+                {embyError && <div className="landing-error">{embyError}</div>}
+                <div className="input-group">
+                  <label className="input-label" htmlFor="emby-url">Emby Server URL</label>
+                  <input
+                    id="emby-url"
+                    className="input"
+                    type="url"
+                    placeholder="http://192.168.1.100:8096"
+                    value={embyUrl}
+                    onChange={(e) => setEmbyUrl(e.target.value)}
+                    required
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label" htmlFor="emby-key">API Key</label>
+                  <input
+                    id="emby-key"
+                    className="input"
+                    type="text"
+                    placeholder="Your Emby API key"
+                    value={embyApiKey}
+                    onChange={(e) => setEmbyApiKey(e.target.value)}
+                    required
+                    autoComplete="off"
+                  />
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 4 }}>
+                    Find this in Emby Dashboard &gt; Advanced &gt; API Keys
+                  </p>
+                </div>
+                <button
+                  className="btn btn-primary btn-full"
+                  type="submit"
+                  disabled={connectingEmby || !embyUrl.trim() || !embyApiKey.trim()}
+                >
+                  {connectingEmby ? 'Connecting...' : 'Connect'}
+                </button>
+                <button
+                  className="btn btn-ghost btn-full"
+                  type="button"
+                  onClick={() => { setShowEmbyForm(false); setEmbyError(''); }}
+                  style={{ marginTop: 8 }}
+                >
+                  Back
+                </button>
+              </form>
+            )}
+
+            {embyUsers && (
+              <div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 12 }}>
+                  Select a user profile:
+                </p>
+                {embyError && <div className="landing-error">{embyError}</div>}
+                {embyUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    className="btn btn-full"
+                    style={{ marginBottom: 8, background: 'var(--color-emby, #52b54b)', color: '#fff' }}
+                    onClick={() => handleEmbyUserSelect(user.id)}
+                    disabled={connectingEmby}
+                  >
+                    {user.name}{user.isAdmin ? ' (Admin)' : ''}
+                  </button>
+                ))}
+                <button
+                  className="btn btn-ghost btn-full"
+                  type="button"
+                  onClick={() => { setEmbyUsers(undefined); setEmbyError(''); }}
+                  style={{ marginTop: 4 }}
+                >
+                  Back
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {!plexLoading && plexStatus?.configured && (
+        {!statusLoading && serverStatus?.configured && (
           <>
             <div className="plex-connected">
               <span className="plex-dot" />
-              Connected to {plexStatus.serverName || 'Plex'}
+              Connected to {serverStatus.serverName || serverLabel}
             </div>
 
             {/* Create Room */}
@@ -276,7 +437,7 @@ export default function Landing() {
           </>
         )}
 
-        {plexLoading && (
+        {statusLoading && (
           <div className="empty-state" style={{ padding: '20px' }}>
             <div className="loading-spinner" />
           </div>

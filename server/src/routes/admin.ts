@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db.js';
+import { getMediaServerConfig } from '../services/plexAuth.js';
 
 const router = Router();
 
@@ -77,7 +78,7 @@ router.get('/rooms/:code/matches', requireAdmin, (req: Request, res: Response) =
 
     const matches = db.prepare(`
       SELECT m.id, m.room_id, m.media_id, m.matched_at, m.watched, m.watched_at,
-             med.plex_rating_key, med.type, med.title, med.year, med.summary,
+             med.source, med.source_id, med.type, med.title, med.year, med.summary,
              med.poster_url, med.rating, med.genre, med.duration,
              med.content_rating, med.episode_count
       FROM matches m
@@ -87,7 +88,7 @@ router.get('/rooms/:code/matches', requireAdmin, (req: Request, res: Response) =
     `).all(room.id) as Array<{
       id: number; room_id: number; media_id: number; matched_at: string;
       watched: number; watched_at: string | null;
-      plex_rating_key: string; type: string; title: string; year: number | null;
+      source: string; source_id: string; type: string; title: string; year: number | null;
       summary: string | null; poster_url: string | null; rating: number | null;
       genre: string | null; duration: number | null; content_rating: string | null;
       episode_count: number | null;
@@ -102,7 +103,8 @@ router.get('/rooms/:code/matches', requireAdmin, (req: Request, res: Response) =
       watched_at: row.watched_at,
       media: {
         id: row.media_id,
-        plex_rating_key: row.plex_rating_key,
+        source: row.source,
+        source_id: row.source_id,
         type: row.type,
         title: row.title,
         year: row.year,
@@ -120,6 +122,21 @@ router.get('/rooms/:code/matches', requireAdmin, (req: Request, res: Response) =
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to fetch matches';
     res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/admin/media-server — get current media server config
+router.get('/media-server', requireAdmin, (_req: Request, res: Response) => {
+  const config = getMediaServerConfig();
+  if (config) {
+    res.json({
+      configured: true,
+      serverType: config.server_type,
+      serverName: config.server_name,
+      serverUrl: config.server_url,
+    });
+  } else {
+    res.json({ configured: false });
   }
 });
 

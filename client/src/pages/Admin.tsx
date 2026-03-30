@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { adminLogin, adminGetRooms, adminGetRoomMatches } from '../api';
-import type { Match } from '../api';
+import { adminLogin, adminGetRooms, adminGetRoomMatches, plexLogout, embyLogout, getMediaServerStatus } from '../api';
+import type { Match, MediaServerStatus } from '../api';
 
 interface AdminRoom {
   code: string;
@@ -21,6 +21,9 @@ export default function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
 
+  const [serverInfo, setServerInfo] = useState<MediaServerStatus | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
   const fetchRooms = useCallback(async () => {
     setLoadingRooms(true);
     try {
@@ -33,6 +36,15 @@ export default function Admin() {
     }
   }, []);
 
+  const fetchServerInfo = useCallback(async () => {
+    try {
+      const status = await getMediaServerStatus();
+      setServerInfo(status);
+    } catch {
+      setServerInfo(null);
+    }
+  }, []);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoginError('');
@@ -42,6 +54,7 @@ export default function Admin() {
       setAuthed(true);
       setPassword('');
       fetchRooms();
+      fetchServerInfo();
     } catch {
       setLoginError('Invalid password');
     } finally {
@@ -64,6 +77,22 @@ export default function Admin() {
       setMatches([]);
     } finally {
       setLoadingMatches(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setDisconnecting(true);
+    try {
+      if (serverInfo?.serverType === 'emby') {
+        await embyLogout();
+      } else {
+        await plexLogout();
+      }
+      setServerInfo({ configured: false });
+    } catch {
+      // ignore
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -111,6 +140,40 @@ export default function Admin() {
       </div>
 
       <div className="admin-content">
+        {/* Media Server Section */}
+        <div className="admin-section-header">
+          <h2>Media Server</h2>
+        </div>
+        {serverInfo?.configured ? (
+          <div className="landing-card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>
+                  {serverInfo.serverType === 'emby' ? 'Emby' : 'Plex'}: {serverInfo.serverName || 'Unknown'}
+                </div>
+                {serverInfo.serverUrl && (
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>
+                    {serverInfo.serverUrl}
+                  </div>
+                )}
+              </div>
+              <button
+                className="btn btn-ghost"
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                style={{ color: '#ef4444' }}
+              >
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state" style={{ padding: '12px', marginBottom: 16 }}>
+            <p>No media server connected.</p>
+          </div>
+        )}
+
+        {/* Rooms Section */}
         <div className="admin-section-header">
           <h2>Rooms</h2>
           <button className="btn btn-ghost" onClick={fetchRooms} disabled={loadingRooms}>

@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import type { MediaServerConfig } from '../types.js';
 
 const PLEX_CLIENT_ID = 'moviematcher-app';
 const PLEX_PRODUCT = 'MovieMatcher';
@@ -162,20 +163,37 @@ export async function findBestConnection(
  */
 export function savePlexConfig(config: PlexConfig): void {
   db.prepare(`
-    INSERT INTO plex_config (id, auth_token, server_name, server_url, machine_id, updated_at)
-    VALUES (1, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO media_server_config (id, server_type, auth_token, server_name, server_url, machine_id, updated_at)
+    VALUES (1, 'plex', ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
+      server_type = 'plex',
       auth_token = excluded.auth_token,
       server_name = excluded.server_name,
       server_url = excluded.server_url,
       machine_id = excluded.machine_id,
+      user_id = NULL,
       updated_at = excluded.updated_at
   `).run(config.auth_token, config.server_name, config.server_url, config.machine_id);
 }
 
 /**
- * Get saved Plex config
+ * Get saved Plex config (returns null if not configured or not Plex)
  */
 export function getPlexConfig(): PlexConfig | null {
-  return (db.prepare('SELECT * FROM plex_config WHERE id = 1').get() as PlexConfig) ?? null;
+  const row = db.prepare("SELECT * FROM media_server_config WHERE id = 1 AND server_type = 'plex'").get() as PlexConfig | undefined;
+  return row ?? null;
+}
+
+/**
+ * Get the current media server config regardless of type
+ */
+export function getMediaServerConfig(): MediaServerConfig | null {
+  return (db.prepare('SELECT * FROM media_server_config WHERE id = 1').get() as MediaServerConfig) ?? null;
+}
+
+/**
+ * Delete the current media server config
+ */
+export function deleteMediaServerConfig(): void {
+  db.prepare('DELETE FROM media_server_config WHERE id = 1').run();
 }

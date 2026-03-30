@@ -34,7 +34,8 @@ export function initDb(): void {
 
     CREATE TABLE IF NOT EXISTS media (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      plex_rating_key TEXT NOT NULL UNIQUE,
+      source TEXT NOT NULL DEFAULT 'plex' CHECK(source IN ('plex', 'emby')),
+      source_id TEXT NOT NULL,
       type TEXT NOT NULL CHECK(type IN ('movie', 'show')),
       title TEXT NOT NULL,
       year INTEGER,
@@ -45,7 +46,8 @@ export function initDb(): void {
       duration INTEGER,
       content_rating TEXT,
       episode_count INTEGER,
-      last_synced_at DATETIME NOT NULL DEFAULT (datetime('now'))
+      last_synced_at DATETIME NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(source, source_id)
     );
 
     CREATE TABLE IF NOT EXISTS swipes (
@@ -76,12 +78,14 @@ export function initDb(): void {
       UNIQUE(room_id, media_id)
     );
 
-    CREATE TABLE IF NOT EXISTS plex_config (
+    CREATE TABLE IF NOT EXISTS media_server_config (
       id INTEGER PRIMARY KEY CHECK (id = 1),
+      server_type TEXT NOT NULL CHECK(server_type IN ('plex', 'emby')),
       auth_token TEXT NOT NULL,
       server_name TEXT,
       server_url TEXT NOT NULL,
       machine_id TEXT,
+      user_id TEXT,
       updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -91,8 +95,45 @@ export function initDb(): void {
     CREATE INDEX IF NOT EXISTS idx_swipes_room_media ON swipes(room_id, media_id);
     CREATE INDEX IF NOT EXISTS idx_matches_room_id ON matches(room_id);
     CREATE INDEX IF NOT EXISTS idx_room_media_room_id ON room_media(room_id);
-    CREATE INDEX IF NOT EXISTS idx_media_plex_rating_key ON media(plex_rating_key);
+    CREATE INDEX IF NOT EXISTS idx_media_source_id ON media(source, source_id);
   `);
+
+  // Migration: move data from old plex_config and media tables if they exist
+  migrateFromLegacySchema();
+}
+
+function migrateFromLegacySchema(): void {
+  // Check if old plex_config table exists and has data
+  const hasPlexConfig = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='plex_config'"
+  ).get();
+
+  if (hasPlexConfig) {
+    const oldConfig = db.prepare('SELECT * FROM plex_config WHERE id = 1').get() as {
+      auth_token: string; server_name: string | null; server_url: string; machine_id: string | null;
+    } | undefined;
+
+    if (oldConfig) {
+      // Migrate to new table
+      db.prepare(`
+        INSERT OR IGNORE INTO media_server_config (id, server_type, auth_token, server_name, server_url, machine_id, updated_at)
+        VALUES (1, 'plex', ?, ?, ?, ?, datetime('now'))
+      `).run(oldConfig.auth_token, oldConfig.server_name, oldConfig.server_url, oldConfig.machine_id);
+    }
+  }
+
+  // Check if media table has old plex_rating_key column and migrate data
+  const columns = db.prepare("PRAGMA table_info(media)").all() as Array<{ name: string }>;
+  const hasPlexRatingKey = columns.some(c => c.name === 'plex_rating_key');
+  const hasSourceId = columns.some(c => c.name === 'source_id');
+
+  if (hasPlexRatingKey && !hasSourceId) {
+    // Old schema: rename column and add source
+    db.exec(`
+      ALTER TABLE media RENAME COLUMN plex_rating_key TO source_id;
+      ALTER TABLE media ADD COLUMN source TEXT NOT NULL DEFAULT 'plex' CHECK(source IN ('plex', 'emby'));
+    `);
+  }
 }
 
 export { db };
