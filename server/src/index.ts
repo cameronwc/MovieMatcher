@@ -71,16 +71,20 @@ app.get('/api/media/poster', async (req, res) => {
       return;
     }
     const config = getPlexConfig();
-    const plexUrl = config?.server_url || process.env.PLEX_URL;
-    const plexToken = config?.auth_token || process.env.PLEX_TOKEN;
-    if (!plexUrl || !plexToken) { res.status(503).end(); return; }
+    const plexUrl = process.env.PLEX_URL || config?.server_url;
+    const plexToken = process.env.PLEX_TOKEN || config?.auth_token;
+    if (!plexUrl || !plexToken) {
+      console.log(`[POSTER] ERROR: Plex not configured (url=${!!plexUrl}, token=${!!plexToken})`);
+      res.status(503).end();
+      return;
+    }
     const imageUrl = `${plexUrl}/photo/:/transcode?width=400&height=600&minSize=1&url=${encodeURIComponent(thumbUrl)}&X-Plex-Token=${plexToken}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const response = await fetch(imageUrl, { signal: controller.signal });
     clearTimeout(timeout);
     if (!response.ok) {
-      console.error(`Poster proxy error: Plex returned ${response.status} for ${thumbUrl}`);
+      console.log(`[POSTER] ERROR: Plex returned ${response.status} for ${thumbUrl} (url=${plexUrl})`);
       res.status(response.status).end();
       return;
     }
@@ -89,7 +93,7 @@ app.get('/api/media/poster', async (req, res) => {
     const buffer = await response.arrayBuffer();
     res.send(Buffer.from(buffer));
   } catch (err) {
-    console.error('Poster proxy error:', err instanceof Error ? err.message : err);
+    console.log(`[POSTER] ERROR: ${err instanceof Error ? err.message : err}`);
     res.status(500).end();
   }
 });
