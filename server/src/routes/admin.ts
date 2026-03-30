@@ -37,7 +37,7 @@ router.post('/login', (req: Request, res: Response) => {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.SECURE_COOKIES === 'true',
     maxAge: 24 * 60 * 60 * 1000, // 1 day
   });
 

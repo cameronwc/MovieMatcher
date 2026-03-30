@@ -40,11 +40,19 @@ const io = setupSocket(httpServer);
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: true,
   credentials: true,
 }));
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
+
+// Request logging
+app.use((req, _res, next) => {
+  if (req.path.startsWith('/api/')) {
+    console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  }
+  next();
+});
 
 // I6: Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -111,6 +119,8 @@ process.on('SIGINT', shutdown);
 const PORT = parseInt(process.env.PORT || '3000', 10);
 httpServer.listen(PORT, () => {
   console.log(`MovieMatcher server listening on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Database: ${process.env.DB_PATH || './data/moviematcher.db'}`);
 });
 
 export { app, httpServer, io };

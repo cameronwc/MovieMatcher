@@ -17,7 +17,7 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 export function setupSocket(httpServer: HttpServer): SocketIOServer {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+      origin: true,
       credentials: true,
     },
   });
@@ -38,13 +38,20 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
   });
 
   io.on('connection', (socket) => {
+    console.log(`Socket connected: ${socket.data.member?.nickname || 'unknown'}`);
+
     socket.on('join-room', (roomCode: string) => {
       if (typeof roomCode === 'string' && roomCode.trim()) {
         const normalized = roomCode.trim().toUpperCase();
         if (socket.data.member?.room_code === normalized) {
           socket.join(normalized);
+          console.log(`Socket joined room: ${normalized} (${socket.data.member.nickname})`);
         }
       }
+    });
+
+    socket.on('disconnect', () => {
+      console.log(`Socket disconnected: ${socket.data.member?.nickname || 'unknown'}`);
     });
   });
 

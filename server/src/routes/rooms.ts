@@ -23,19 +23,24 @@ router.post('/', (req: Request, res: Response) => {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.SECURE_COOKIES === 'true',
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
+
+    console.log(`Room created: ${result.room.code} by ${result.member.nickname}`);
 
     res.status(201).json({
       room: result.room,
       member: result.member,
     });
 
-    // Fire-and-forget: sync Plex media for the new room (I9: log errors)
-    syncMediaForRoom(result.room.id).catch((err) => {
-      console.error(`Initial Plex sync failed for room ${result.room.code}:`, err instanceof Error ? err.message : err);
-    });
+    // Fire-and-forget: sync Plex media for the new room
+    console.log(`Starting initial Plex sync for room ${result.room.code}...`);
+    syncMediaForRoom(result.room.id)
+      .then((ids) => console.log(`Plex sync complete for room ${result.room.code}: ${ids.length} items loaded`))
+      .catch((err) => {
+        console.error(`Plex sync failed for room ${result.room.code}:`, err instanceof Error ? err.message : err);
+      });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to create room';
     // Duplicate code → 409
@@ -86,9 +91,11 @@ router.post('/:code/join', (req: Request, res: Response) => {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.SECURE_COOKIES === 'true',
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
+
+    console.log(`Member joined room ${result.room.code}: ${result.member.nickname}`);
 
     res.json({
       room: result.room,
