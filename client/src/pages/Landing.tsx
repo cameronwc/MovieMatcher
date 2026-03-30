@@ -197,6 +197,19 @@ export default function Landing() {
             <form className="landing-card" onSubmit={handleCreate}>
               <h2>Create Room</h2>
               <div className="input-group">
+                <label className="input-label" htmlFor="create-code">Room Code (optional)</label>
+                <input
+                  id="create-code"
+                  className="input"
+                  type="text"
+                  placeholder="e.g. MovieNight"
+                  value={createCode}
+                  onChange={(e) => setCreateCode(e.target.value)}
+                  maxLength={20}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="input-group">
                 <label className="input-label" htmlFor="create-nickname">Nickname</label>
                 <input
                   id="create-nickname"
@@ -207,19 +220,6 @@ export default function Landing() {
                   onChange={(e) => setCreateNickname(e.target.value)}
                   maxLength={30}
                   required
-                  autoComplete="off"
-                />
-              </div>
-              <div className="input-group">
-                <label className="input-label" htmlFor="create-code">Room Code (optional)</label>
-                <input
-                  id="create-code"
-                  className="input"
-                  type="text"
-                  placeholder="e.g. MovieNight"
-                  value={createCode}
-                  onChange={(e) => setCreateCode(e.target.value)}
-                  maxLength={20}
                   autoComplete="off"
                 />
               </div>
